@@ -20,12 +20,15 @@ export function vanillaBuiltin(): DetectorPlugin {
 
     onFile(context: FileContext): ManifestFragment {
       const fragment: ManifestFragment = {};
-      const tagNamesByClass = detectCustomElementRegistrations(context.sourceFile);
+      const tagNamesByClass = detectCustomElementRegistrations(context.sourceFile, context.checker);
 
       ts.forEachChild(context.sourceFile, function visit(node) {
         if (ts.isClassDeclaration(node) && node.name) {
           const className = node.name.text;
-          const shouldInclude = extendsHTMLElement(node) || tagNamesByClass.has(className);
+          const shouldInclude =
+            extendsHTMLElement(node) ||
+            tagNamesByClass.has(className) ||
+            inheritsHTMLElement(node, context.checker);
           if (!shouldInclude) {
             ts.forEachChild(node, visit);
             return;
@@ -110,6 +113,27 @@ function extendsHTMLElement(node: ts.ClassDeclaration): boolean {
   return node.heritageClauses.some((clause) =>
     clause.types.some((t) => t.expression.getText().match(/HTMLElement$/)),
   );
+}
+
+/**
+ * Whether a base class of `node`, at any depth, is `HTMLElement`, by the type checker: a subclass of
+ * a custom base class, as `class Card extends CardBase`, is an element too.
+ */
+function inheritsHTMLElement(node: ts.ClassDeclaration, checker?: ts.TypeChecker): boolean {
+  if (!checker || !node.heritageClauses || !node.name) return false;
+  const symbol = checker.getSymbolAtLocation(node.name);
+  if (!symbol) return false;
+
+  const seen = new Set<ts.Symbol>();
+  const reaches = (type: ts.Type): boolean =>
+    (type.isClassOrInterface() ? checker.getBaseTypes(type) : []).some((base) => {
+      const baseSymbol = base.getSymbol();
+      if (!baseSymbol || seen.has(baseSymbol)) return false;
+      seen.add(baseSymbol);
+      return baseSymbol.getName() === "HTMLElement" || reaches(base);
+    });
+
+  return reaches(checker.getDeclaredTypeOfSymbol(symbol));
 }
 
 function getSuperclassRef(node: ts.ClassDeclaration): ClassFragment["superclass"] {
