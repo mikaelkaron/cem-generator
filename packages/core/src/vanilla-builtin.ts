@@ -26,9 +26,7 @@ export function vanillaBuiltin(): DetectorPlugin {
         if (ts.isClassDeclaration(node) && node.name) {
           const className = node.name.text;
           const shouldInclude =
-            extendsHTMLElement(node) ||
-            tagNamesByClass.has(className) ||
-            inheritsHTMLElement(node, context.checker);
+            tagNamesByClass.has(className) || inheritsHTMLElement(node, context.checker);
           if (!shouldInclude) {
             ts.forEachChild(node, visit);
             return;
@@ -108,21 +106,24 @@ function getExportName(node: ts.ClassDeclaration): string | undefined {
   return node.name?.text;
 }
 
-function extendsHTMLElement(node: ts.ClassDeclaration): boolean {
-  if (!node.heritageClauses) return false;
-  return node.heritageClauses.some((clause) =>
-    clause.types.some((t) => t.expression.getText().match(/HTMLElement$/)),
-  );
-}
-
 /**
- * Whether a base class of `node`, at any depth, is `HTMLElement`, by the type checker: a subclass of
- * a custom base class, as `class Card extends CardBase`, is an element too.
+ * Whether a base class of `node`, at any depth, is the global `HTMLElement` of the DOM lib, by the
+ * type checker: a subclass of a custom base class, as `class Card extends CardBase`, is an element
+ * too, and a class of the user's own named `HTMLElement` is not.
  */
-function inheritsHTMLElement(node: ts.ClassDeclaration, checker?: ts.TypeChecker): boolean {
-  if (!checker || !node.heritageClauses || !node.name) return false;
+function inheritsHTMLElement(node: ts.ClassDeclaration, checker: ts.TypeChecker): boolean {
+  if (!node.heritageClauses || !node.name) return false;
   const symbol = checker.getSymbolAtLocation(node.name);
   if (!symbol) return false;
+
+  // Without the DOM lib, `HTMLElement` resolves to nothing: the name in the extends clause is all
+  // there is to go by.
+  const htmlElement = checker.resolveName("HTMLElement", undefined, ts.SymbolFlags.Type, false);
+  if (!htmlElement) {
+    return node.heritageClauses.some((clause) =>
+      clause.types.some((t) => t.expression.getText().endsWith("HTMLElement")),
+    );
+  }
 
   const seen = new Set<ts.Symbol>();
   const reaches = (type: ts.Type): boolean =>
@@ -130,7 +131,7 @@ function inheritsHTMLElement(node: ts.ClassDeclaration, checker?: ts.TypeChecker
       const baseSymbol = base.getSymbol();
       if (!baseSymbol || seen.has(baseSymbol)) return false;
       seen.add(baseSymbol);
-      return baseSymbol.getName() === "HTMLElement" || reaches(base);
+      return baseSymbol === htmlElement || reaches(base);
     });
 
   return reaches(checker.getDeclaredTypeOfSymbol(symbol));

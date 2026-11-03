@@ -7,9 +7,10 @@ import { generateCem } from "../dist/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixturesTsConfig = path.resolve(__dirname, "fixtures/tsconfig.json");
+const noDomTsConfig = path.resolve(__dirname, "no-dom-fixture/tsconfig.json");
 
-const declarationsOf = () =>
-  generateCem({ tsConfigPath: fixturesTsConfig, include: ["abstract-base-element.ts"] })
+const declarationsOf = (include = "abstract-base-element.ts", tsConfigPath = fixturesTsConfig) =>
+  generateCem({ tsConfigPath, include: [include] })
     .modules.flatMap((module) => module.declarations ?? [])
     .filter((declaration) => declaration.customElement);
 
@@ -30,4 +31,25 @@ test("a tag registered by its constant is the element's tag", () => {
     card?.events?.map(({ name }) => name),
     ["card-open"],
   );
+});
+
+test("a tag the checker cannot know is no tag", () => {
+  const elements = declarationsOf("dynamic-tag-element.ts");
+
+  assert.deepEqual(elements.map(({ name }) => name).sort(), [
+    "ComputedTagElement",
+    "LetTagElement",
+    "TemplateTagElement",
+  ]);
+  assert.ok(elements.every(({ tagName }) => tagName === undefined));
+});
+
+test("a class of the user's own named HTMLElement is not the DOM's", () => {
+  assert.deepEqual(declarationsOf("shadowed-html-element.ts"), []);
+});
+
+test("without the DOM lib, a class that extends HTMLElement is an element by its name", () => {
+  const names = declarationsOf("plain-element.ts", noDomTsConfig).map(({ name }) => name);
+
+  assert.deepEqual(names, ["PlainElement"]);
 });
