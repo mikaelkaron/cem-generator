@@ -117,25 +117,33 @@ function inheritsHTMLElement(node: ts.ClassDeclaration, checker: ts.TypeChecker)
   if (!symbol) return false;
 
   // Without the DOM lib, `HTMLElement` resolves to nothing: the name in the extends clause is all
-  // there is to go by.
+  // there is to go by, when it names no class of the user's own.
   const htmlElement = checker.resolveName("HTMLElement", undefined, ts.SymbolFlags.Type, false);
   if (!htmlElement) {
     return node.heritageClauses.some((clause) =>
-      clause.types.some((t) => t.expression.getText().endsWith("HTMLElement")),
+      clause.types.some(
+        (t) =>
+          t.expression.getText().endsWith("HTMLElement") &&
+          !checker.getSymbolAtLocation(t.expression),
+      ),
     );
   }
 
   const seen = new Set<ts.Symbol>();
+  // Whether `type` is HTMLElement, or reaches it by its bases. A mixin's base, as
+  // `WithTheme(CardBase)`, is an intersection: it is one if a type of it is.
+  const isOrReaches = (type: ts.Type): boolean => {
+    if (type.isIntersection()) return type.types.some(isOrReaches);
+    const symbol = type.getSymbol();
+    if (!symbol || seen.has(symbol)) return false;
+    seen.add(symbol);
+    return symbol === htmlElement || reaches(type);
+  };
   const reaches = (type: ts.Type): boolean => {
     // A base given type arguments, as `extends Base<string>`, is a reference to its class: its
     // bases are the class's.
     const declared = isTypeReference(type) ? type.target : type;
-    return (declared.isClassOrInterface() ? checker.getBaseTypes(declared) : []).some((base) => {
-      const baseSymbol = base.getSymbol();
-      if (!baseSymbol || seen.has(baseSymbol)) return false;
-      seen.add(baseSymbol);
-      return baseSymbol === htmlElement || reaches(base);
-    });
+    return (declared.isClassOrInterface() ? checker.getBaseTypes(declared) : []).some(isOrReaches);
   };
 
   return reaches(checker.getDeclaredTypeOfSymbol(symbol));

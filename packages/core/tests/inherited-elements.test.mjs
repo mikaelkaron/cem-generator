@@ -28,6 +28,12 @@ test("a subclass of a base given type arguments is an element", () => {
   assert.deepEqual(names.sort(), ["ShortText", "TextValue", "ValueBase"]);
 });
 
+test("a subclass of a mixin of an element's base is an element", () => {
+  const names = declarationsOf("mixin-base-element.ts").map(({ name }) => name);
+
+  assert.deepEqual(names.sort(), ["CardBase", "ThemedCard"]);
+});
+
 test("a tag registered by its constant is the element's tag", () => {
   const card = declarationsOf().find(({ name }) => name === "CardElement");
 
@@ -58,4 +64,8 @@ test("without the DOM lib, a class that extends HTMLElement is an element by its
   const names = declarationsOf("plain-element.ts", noDomTsConfig).map(({ name }) => name);
 
   assert.deepEqual(names, ["PlainElement"]);
+});
+
+test("without the DOM lib, a class of the user's own named HTMLElement is not the DOM's", () => {
+  assert.deepEqual(declarationsOf("shadowed-html-element.ts", noDomTsConfig), []);
 });
