@@ -22,6 +22,12 @@ test("a subclass of a custom base class of HTMLElement is an element", () => {
   assert.ok(!names.includes("CardModel"));
 });
 
+test("a subclass of a base given type arguments is an element", () => {
+  const names = declarationsOf("generic-base-element.ts").map(({ name }) => name);
+
+  assert.deepEqual(names.sort(), ["ShortText", "TextValue", "ValueBase"]);
+});
+
 test("a tag registered by its constant is the element's tag", () => {
   const card = declarationsOf().find(({ name }) => name === "CardElement");
 

@@ -126,15 +126,26 @@ function inheritsHTMLElement(node: ts.ClassDeclaration, checker: ts.TypeChecker)
   }
 
   const seen = new Set<ts.Symbol>();
-  const reaches = (type: ts.Type): boolean =>
-    (type.isClassOrInterface() ? checker.getBaseTypes(type) : []).some((base) => {
+  const reaches = (type: ts.Type): boolean => {
+    // A base given type arguments, as `extends Base<string>`, is a reference to its class: its
+    // bases are the class's.
+    const declared = isTypeReference(type) ? type.target : type;
+    return (declared.isClassOrInterface() ? checker.getBaseTypes(declared) : []).some((base) => {
       const baseSymbol = base.getSymbol();
       if (!baseSymbol || seen.has(baseSymbol)) return false;
       seen.add(baseSymbol);
       return baseSymbol === htmlElement || reaches(base);
     });
+  };
 
   return reaches(checker.getDeclaredTypeOfSymbol(symbol));
+}
+
+function isTypeReference(type: ts.Type): type is ts.TypeReference {
+  return (
+    (type.flags & ts.TypeFlags.Object) !== 0 &&
+    ((type as ts.ObjectType).objectFlags & ts.ObjectFlags.Reference) !== 0
+  );
 }
 
 function getSuperclassRef(node: ts.ClassDeclaration): ClassFragment["superclass"] {
